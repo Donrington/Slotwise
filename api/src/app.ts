@@ -1,7 +1,10 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type pg from "pg";
 import { getPool } from "./db.js";
+import { assertApiKey, keysMatch } from "./lib/auth.js";
+import { systemClock, type Clock } from "./lib/clock.js";
 import { HttpError } from "./lib/errors.js";
+import { parseBookingBody } from "./lib/validate.js";
 import { createBooking, getBooking } from "./services/bookings.js";
 import { assertValidSlots, listSlots, resetSlots, type SlotInput } from "./services/slots.js";
 
@@ -9,8 +12,37 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const isStr = (v: unknown): v is string => typeof v === "string";
 
-export function buildApp(pool: pg.Pool = getPool()): FastifyInstance {
+export interface AppOptions {
+  pool?: pg.Pool;
+  apiKey: string;
+  clock?: Clock;
+}
+
+export function buildApp(opts: AppOptions): FastifyInstance {
+  const pool = opts.pool ?? getPool();
+  const apiKey = assertApiKey(opts.apiKey);
+  const clock = opts.clock ?? systemClock;
   const app = Fastify({ logger: false });
+
+  // CORS: the page lives on another origin. Preflight is answered before auth.
+  app.addHook("onRequest", async (req, reply) => {
+    reply.header("Access-Control-Allow-Origin", "*");
+    reply.header("Access-Control-Expose-Headers", "Retry-After");
+    if (req.method === "OPTIONS") {
+      reply.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      reply.header("Access-Control-Allow-Headers", "X-API-Key, Content-Type, Idempotency-Key");
+      reply.header("Access-Control-Max-Age", "86400");
+      return reply.code(204).send();
+    }
+  });
+
+  // Auth runs before routing work for every route, unknown ones included.
+  app.addHook("onRequest", async (req, reply) => {
+    if (req.method === "GET" && req.url.split("?")[0] === "/healthz") return;
+    if (!keysMatch(req.headers["x-api-key"], apiKey)) {
+      return reply.code(401).send({ error: "unauthorized" });
+    }
+  });
 
   app.setErrorHandler((err: any, _req, reply) => {
     if (err instanceof HttpError) {
@@ -48,11 +80,8 @@ export function buildApp(pool: pg.Pool = getPool()): FastifyInstance {
   });
 
   app.post("/bookings", async (req, reply) => {
-    const b = req.body;
-    if (!isObj(b) || !isStr(b.slot_id) || !isStr(b.name) || !isStr(b.email)) {
-      throw new HttpError(400, "slot_id, name and email are required strings");
-    }
-    const booking = await createBooking(pool, { slot_id: b.slot_id, name: b.name, email: b.email });
+    const input = parseBookingBody(req.body);
+    const booking = await createBooking(pool, input, clock);
     return reply.code(201).send(booking);
   });
 

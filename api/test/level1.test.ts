@@ -4,11 +4,13 @@ import { buildApp } from "../src/app.js";
 import { migrate } from "../src/db.js";
 
 const url = process.env.TEST_DATABASE_URL;
+const KEY = "test-key-0123456789abcdef";
 if (!url) console.warn("TEST_DATABASE_URL not set: skipping integration tests");
 
 describe.skipIf(!url)("level 1", () => {
   let pool: pg.Pool;
-  let app: ReturnType<typeof buildApp>;
+  let rawApp: ReturnType<typeof buildApp>;
+  const app = { inject: (o: any) => rawApp.inject({ ...o, headers: { "x-api-key": KEY, ...(o.headers ?? {}) } }), close: () => rawApp?.close() };
   const slots = [
     { id: "b", provider: "Dr Bisi", start: "2030-01-01T10:00:00Z", end: "2030-01-01T10:30:00Z" },
     { id: "a", provider: "Dr Ade", start: "2030-01-01T09:00:00+01:00", end: "2030-01-01T09:30:00+01:00" },
@@ -19,7 +21,7 @@ describe.skipIf(!url)("level 1", () => {
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: url });
     await migrate(pool);
-    app = buildApp(pool);
+    rawApp = buildApp({ pool, apiKey: KEY });
   });
   afterAll(async () => {
     await app?.close();
