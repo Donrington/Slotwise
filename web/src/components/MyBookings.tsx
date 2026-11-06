@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
 import { cancelBooking, listBookings } from "@/lib/api";
-import { fullWhen } from "@/lib/format";
+import { dayParts, timeParts } from "@/lib/format";
 import { isEmail } from "@/lib/validate";
 import type { Booking, SlotWithAvailability } from "@/lib/types";
-import { Button, Notice, StatusBadge } from "./ui";
+import { Arrow, Button, Label, Notice, StatusBadge } from "./ui";
 
 interface Props {
   lastEmail: string;
@@ -70,75 +70,100 @@ export function MyBookings({ lastEmail, onEmail, slotLookup, onSlotsChanged, ann
   }
 
   return (
-    <section id="my-bookings" aria-labelledby="mine-title" className="mx-auto max-w-5xl scroll-mt-4 px-4 pb-20 sm:px-6">
-      <div data-reveal>
-        <h2 id="mine-title" className="font-display text-3xl text-ink sm:text-4xl">
-          My bookings
-        </h2>
-        <p className="mt-1 text-muted">Look up everything booked with your email, including cancelled ones.</p>
+    <section id="my-bookings" aria-labelledby="mine-title" className="scroll-mt-20 bg-paper-2 px-4 py-20 sm:px-8 sm:py-28">
+      <div className="mx-auto max-w-[1440px]">
+        <div data-reveal className="grid gap-6 border-b border-ink pb-6 md:grid-cols-12 md:items-end">
+          <div className="md:col-span-8">
+            <Label className="text-muted">N°04 Your bookings</Label>
+            <h2 id="mine-title" className="mt-3 font-display text-[clamp(2.75rem,7vw,6.5rem)] font-medium leading-[0.9] tracking-[-0.04em]">
+              My <em className="font-serif font-normal">bookings</em>
+            </h2>
+          </div>
+          <p className="max-w-sm text-muted md:col-span-4">Everything booked with your email, oldest first. Cancelled ones stay on the record.</p>
+        </div>
+
+        <form onSubmit={lookup} noValidate className="mt-10 grid gap-6 md:grid-cols-12 md:items-end">
+          <div className="md:col-span-8">
+            <label htmlFor="lookup-email" className="block">
+              <Label className="text-muted">Email</Label>
+            </label>
+            <input
+              id="lookup-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-2 block w-full border-0 border-b border-ink bg-transparent px-0 pb-3 font-display text-[clamp(1.75rem,4vw,3rem)] font-medium tracking-[-0.03em] placeholder:text-muted/50 focus:border-b-2 focus:border-signal focus:outline-none focus:ring-0 focus-visible:outline-none"
+            />
+          </div>
+          <div className="md:col-span-4 md:text-right">
+            <Button type="submit" variant="ink" disabled={loading} aria-busy={loading} className="h-14 px-8">
+              {loading && !items ? "Looking…" : "Look up"} <Arrow />
+            </Button>
+          </div>
+        </form>
+
+        {error && (
+          <div className="mt-6" role="alert">
+            <Notice>{error}</Notice>
+          </div>
+        )}
+
+        {items && items.length === 0 && (
+          <p className="mt-12 border-y border-line py-10 text-center font-display text-2xl tracking-tight">
+            No bookings for <span className="font-serif italic">{queried}</span>.
+          </p>
+        )}
+
+        {items && items.length > 0 && (
+          <ul className="mt-12 border-b border-ink">
+            {items.map((b, i) => {
+              const s = slotLookup(b.slot_id);
+              const t = s ? timeParts(s.start) : null;
+              const d = s ? dayParts(s.start) : null;
+              const cancelled = b.status === "cancelled";
+              return (
+                <li key={b.id} className="grid grid-cols-12 items-center gap-y-3 border-t border-ink py-6">
+                  <span className="col-span-2 font-mono text-xs text-muted tabular sm:col-span-1">{String(i + 1).padStart(2, "0")}</span>
+                  <span className={`col-span-10 flex items-baseline gap-3 sm:col-span-3 ${cancelled ? "text-muted line-through" : ""}`}>
+                    {t && d ? (
+                      <>
+                        <span className="font-mono text-3xl tracking-[-0.04em] tabular">{t.hm}</span>
+                        <span className="font-mono text-xs uppercase">
+                          {t.period} {d.weekday} {d.day} {d.month}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="font-mono text-sm">Slot {b.slot_id}</span>
+                    )}
+                  </span>
+                  <span className="col-span-12 font-display text-xl font-medium tracking-tight sm:col-span-3">{s?.provider ?? "Provider"}</span>
+                  <span className="col-span-6 sm:col-span-2">
+                    <StatusBadge status={b.status} />
+                  </span>
+                  <span className="col-span-6 text-right sm:col-span-3">
+                    {!cancelled && (
+                      <Button variant="link" onClick={() => cancel(b)} disabled={busyId === b.id} className="text-sm">
+                        {busyId === b.id ? "Cancelling…" : "Cancel booking"}
+                      </Button>
+                    )}
+                  </span>
+                  <code className="col-span-12 break-all font-mono text-[11px] text-muted sm:col-start-2">{b.id}</code>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {cursor && (
+          <div className="mt-8">
+            <Button variant="outline" onClick={more} disabled={loading} className="h-14 w-full">
+              {loading ? "Loading…" : "Load more"}
+            </Button>
+          </div>
+        )}
       </div>
-
-      <form onSubmit={lookup} noValidate className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="flex-1">
-          <label htmlFor="lookup-email" className="block text-sm font-semibold text-ink">
-            Email
-          </label>
-          <input
-            id="lookup-email"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-base"
-          />
-        </div>
-        <Button type="submit" disabled={loading} aria-busy={loading}>
-          {loading && !items ? "Looking…" : "Look up"}
-        </Button>
-      </form>
-
-      {error && (
-        <div className="mt-4" role="alert">
-          <Notice>{error}</Notice>
-        </div>
-      )}
-
-      {items && items.length === 0 && (
-        <p className="mt-6 rounded-2xl bg-surface p-6 text-center text-muted ring-1 ring-line">No bookings found for {queried}.</p>
-      )}
-
-      {items && items.length > 0 && (
-        <ul className="mt-6 grid gap-3 md:grid-cols-2">
-          {items.map((b) => {
-            const s = slotLookup(b.slot_id);
-            return (
-              <li key={b.id} className="rounded-2xl bg-surface p-5 ring-1 ring-line">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-ink">{s ? s.provider : `Slot ${b.slot_id}`}</p>
-                    <p className="text-muted">{s ? fullWhen(s.start, s.end) : "Time unavailable"}</p>
-                  </div>
-                  <StatusBadge status={b.status} />
-                </div>
-                <p className="mt-3 break-all text-xs text-muted">{b.id}</p>
-                {b.status === "confirmed" && (
-                  <Button variant="danger" className="mt-4 min-h-10 py-1.5 text-sm" onClick={() => cancel(b)} disabled={busyId === b.id}>
-                    {busyId === b.id ? "Cancelling…" : "Cancel booking"}
-                  </Button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {cursor && (
-        <div className="mt-6">
-          <Button variant="secondary" onClick={more} disabled={loading}>
-            {loading ? "Loading…" : "Load more"}
-          </Button>
-        </div>
-      )}
     </section>
   );
 }

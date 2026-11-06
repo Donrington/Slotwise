@@ -1,33 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { cancelBooking } from "@/lib/api";
-import { fullWhen } from "@/lib/format";
+import { dayLabel, timeParts, timeRange } from "@/lib/format";
 import { loadAnime, prefersReducedMotion } from "@/lib/motion";
 import type { Booking, SlotWithAvailability } from "@/lib/types";
-import { Button, Notice, StatusBadge } from "./ui";
-
-function Check({ animate: shouldAnimate }: { animate: boolean }) {
-  const path = useRef<SVGPathElement>(null);
-  const circle = useRef<SVGCircleElement>(null);
-  useEffect(() => {
-    if (!shouldAnimate || prefersReducedMotion() || !path.current || !circle.current) return;
-    let dead = false;
-    loadAnime().then(({ animate, svg }) => {
-      if (dead || !path.current || !circle.current) return;
-      animate(svg.createDrawable(circle.current), { draw: ["0 0", "0 1"], duration: 450, ease: "outQuad" });
-      animate(svg.createDrawable(path.current), { draw: ["0 0", "0 1"], duration: 350, delay: 250, ease: "outQuad" });
-    });
-    return () => {
-      dead = true;
-    };
-  }, [shouldAnimate]);
-  return (
-    <svg viewBox="0 0 52 52" className="h-16 w-16 text-ok" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle ref={circle} cx="26" cy="26" r="23" />
-      <path ref={path} d="M15 27l8 8 14-16" />
-    </svg>
-  );
-}
+import { Arrow, Button, Label, Notice } from "./ui";
 
 interface Props {
   booking: Booking;
@@ -36,13 +13,33 @@ interface Props {
   onBookAnother: React.ReactNode | (() => void);
   fresh?: boolean;
   announce?: (m: string) => void;
+  /** true inside the ink drawer, false on a paper page */
+  inverse?: boolean;
 }
 
-export function ConfirmationCard({ booking, slot, onChange, onBookAnother, fresh = false, announce }: Props) {
+/** The confirmation is a ticket: stub, perforation, and a stamp that lands when it is fresh. */
+export function ConfirmationCard({ booking, slot, onChange, onBookAnother, fresh = false, announce, inverse = false }: Props) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const stamp = useRef<HTMLSpanElement>(null);
+  const check = useRef<SVGPathElement>(null);
   const cancelled = booking.status === "cancelled";
+  const t = slot ? timeParts(slot.start) : null;
+
+  useEffect(() => {
+    if (!fresh || prefersReducedMotion()) return;
+    let dead = false;
+    loadAnime().then(({ animate, svg }) => {
+      if (dead) return;
+      if (check.current) animate(svg.createDrawable(check.current), { draw: ["0 0", "0 1"], duration: 420, delay: 120, ease: "outQuad" });
+      if (stamp.current)
+        animate(stamp.current, { scale: [1.9, 1], opacity: [0, 1], rotate: [-22, -8], duration: 520, delay: 260, ease: "outBack(1.6)" });
+    });
+    return () => {
+      dead = true;
+    };
+  }, [fresh]);
 
   async function cancel() {
     setBusy(true);
@@ -73,70 +70,108 @@ export function ConfirmationCard({ booking, slot, onChange, onBookAnother, fresh
   }
 
   return (
-    <div className="text-center sm:text-left">
-      <div className="flex flex-col items-center gap-3 sm:flex-row sm:gap-5">
+    <div>
+      <h2 className={`font-display text-4xl font-medium leading-none tracking-[-0.035em] sm:text-5xl ${inverse ? "text-on-ink" : "text-ink"}`}>
         {cancelled ? (
-          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-danger-bg text-3xl text-danger" aria-hidden="true">
-            ×
-          </span>
-        ) : (
-          <Check animate={fresh} />
-        )}
-        <div>
-          <h2 className="font-display text-3xl text-ink">{cancelled ? "Booking cancelled" : "You are booked"}</h2>
-          <div className="mt-2">
-            <StatusBadge status={booking.status} />
-          </div>
-        </div>
-      </div>
-
-      <dl className="mt-6 grid gap-3 rounded-2xl bg-brand-50 p-5 text-left text-sm sm:text-base">
-        {slot && (
           <>
-            <Row k="Provider" v={slot.provider} />
-            <Row k="When" v={fullWhen(slot.start, slot.end)} />
+            Booking <em className="font-serif font-normal">cancelled</em>
+          </>
+        ) : (
+          <>
+            You are <em className="font-serif font-normal">booked</em>
           </>
         )}
-        <Row k="Name" v={booking.name} />
-        <Row k="Email" v={booking.email} />
-        <div>
-          <dt className="text-muted">Booking id</dt>
-          <dd className="mt-1 flex flex-wrap items-center gap-2">
-            <code className="break-all rounded bg-surface px-2 py-1 text-sm">{booking.id}</code>
-            <Button variant="ghost" className="min-h-9 px-3 py-1 text-sm" onClick={copy}>
-              {copied ? "Copied" : "Copy"}
-            </Button>
-          </dd>
+      </h2>
+
+      <article
+        className="relative mt-8 overflow-hidden rounded-[28px] bg-paper text-ink"
+        style={{ ["--ticket-bg" as string]: inverse ? "var(--color-ink)" : "var(--color-paper-2)" }}
+        aria-label="Booking ticket"
+      >
+        <div className="relative p-6 sm:p-7">
+          <div className="flex items-start justify-between gap-4">
+            <Label className="text-muted">Slotwise · Admit one</Label>
+            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              {cancelled ? <path d="M6 6l12 12M18 6L6 18" /> : <path ref={check} d="M4 12.5l5 5L20 6.5" strokeLinecap="square" />}
+            </svg>
+          </div>
+
+          {slot && t ? (
+            <div className="mt-6">
+              <p className={`flex items-baseline gap-2 ${cancelled ? "text-muted line-through decoration-2" : ""}`}>
+                <span className="font-mono text-6xl leading-none tracking-[-0.05em] tabular sm:text-7xl">{t.hm}</span>
+                {t.period && <span className="font-mono text-sm uppercase">{t.period}</span>}
+              </p>
+              <p className="mt-3 font-display text-2xl font-medium tracking-tight">{slot.provider}</p>
+              <p className="text-muted">
+                {dayLabel(slot.start)}, {timeRange(slot.start, slot.end)}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-6 font-mono text-sm text-muted">Slot {booking.slot_id}</p>
+          )}
+
+          <span
+            ref={stamp}
+            className={`mt-6 inline-block -rotate-[8deg] rounded-md px-3 py-1.5 font-display text-xl font-semibold uppercase tracking-[0.06em] sm:absolute sm:right-7 sm:top-[5.25rem] sm:mt-0 ${
+              cancelled ? "text-muted ring-2 ring-inset ring-line-strong line-through" : "bg-signal text-ink"
+            }`}
+          >
+            {cancelled ? "Cancelled" : "Confirmed"}
+          </span>
         </div>
-      </dl>
+
+        <div className="perforation" aria-hidden="true" />
+
+        <dl className="grid gap-4 p-6 text-sm sm:grid-cols-2 sm:p-7">
+          <div>
+            <dt>
+              <Label className="text-muted">Name</Label>
+            </dt>
+            <dd className="mt-1 font-medium">{booking.name}</dd>
+          </div>
+          <div>
+            <dt>
+              <Label className="text-muted">Email</Label>
+            </dt>
+            <dd className="mt-1 break-all font-medium">{booking.email}</dd>
+          </div>
+          <div className="sm:col-span-2">
+            <dt>
+              <Label className="text-muted">Booking id</Label>
+            </dt>
+            <dd className="mt-1 flex flex-wrap items-center gap-3">
+              <code className="break-all font-mono text-[13px]">{booking.id}</code>
+              <Button variant="link" className="min-h-8 text-sm" onClick={copy}>
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            </dd>
+          </div>
+        </dl>
+      </article>
 
       {note && (
-        <div className="mt-4" role="status">
-          <Notice tone="info">{note}</Notice>
+        <div className="mt-5" role="status">
+          <Notice tone="info" inverse={inverse}>
+            {note}
+          </Notice>
         </div>
       )}
 
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        {!cancelled && (
-          <Button variant="danger" onClick={cancel} disabled={busy} aria-busy={busy}>
-            {busy ? "Cancelling…" : "Cancel this booking"}
-          </Button>
-        )}
+      <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
         {typeof onBookAnother === "function" ? (
-          <Button onClick={onBookAnother}>Book another slot</Button>
+          <Button onClick={onBookAnother} className="h-14 px-7">
+            Book another slot <Arrow />
+          </Button>
         ) : (
           onBookAnother
         )}
+        {!cancelled && (
+          <Button variant={inverse ? "link-inverse" : "link"} onClick={cancel} disabled={busy} aria-busy={busy} className="sm:ml-4">
+            {busy ? "Cancelling…" : "Cancel this booking"}
+          </Button>
+        )}
       </div>
-    </div>
-  );
-}
-
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div>
-      <dt className="text-muted">{k}</dt>
-      <dd className="font-semibold text-ink">{v}</dd>
     </div>
   );
 }

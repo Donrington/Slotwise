@@ -1,11 +1,13 @@
 "use client";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { listSlots } from "@/lib/api";
+import { dayParts, timeParts } from "@/lib/format";
 import { startLiveSlots } from "@/lib/live";
 import { loadGsap, prefersReducedMotion } from "@/lib/motion";
 import type { Booking, SlotWithAvailability } from "@/lib/types";
 import { BookingPanel } from "./BookingPanel";
-import { Hero } from "./Hero";
+import { SiteFooter, SiteHeader } from "./Chrome";
+import { Hero, NextOpenMarquee } from "./Hero";
 import { MotionProvider } from "./MotionProvider";
 import { MyBookings } from "./MyBookings";
 import { SlotsSection } from "./SlotsSection";
@@ -22,6 +24,7 @@ export function BookingApp() {
   const [confirmed, setConfirmed] = useState<Booking | null>(null);
   const [lastEmail, setLastEmail] = useState(""); // memory only, never persisted
   const [announcement, setAnnouncement] = useState("");
+  const [live, setLive] = useState(false);
 
   const providerRef = useRef<string | null>(null);
   const liveRows = useRef<SlotWithAvailability[] | null>(null); // set while the Realtime subscription is live
@@ -64,6 +67,7 @@ export function BookingApp() {
     startLiveSlots(
       (rows) => {
         liveRows.current = rows;
+        setLive(true);
         setLoading(false);
         setError(null);
         const p = providerRef.current;
@@ -71,6 +75,7 @@ export function BookingApp() {
       },
       () => {
         liveRows.current = null; // fall back to polling
+        setLive(false);
         refresh();
       },
     ).then((h) => {
@@ -127,6 +132,20 @@ export function BookingApp() {
     };
   }, []);
 
+  const openCount = slots ? slots.filter((s) => s.available).length : null;
+  const nextOpen = useMemo(
+    () =>
+      (slots ?? [])
+        .filter((s) => s.available)
+        .slice(0, 8)
+        .map((s) => {
+          const t = timeParts(s.start);
+          const d = dayParts(s.start);
+          return `Next open · ${s.provider} · ${d.weekday} ${d.day} · ${t.hm}${t.period ? ` ${t.period}` : ""}`;
+        }),
+    [slots],
+  );
+
   const closePanel = useCallback(() => {
     setSelected(null);
     setConfirmed(null);
@@ -135,7 +154,9 @@ export function BookingApp() {
   return (
     <MotionProvider>
       <div ref={root}>
-        <Hero />
+        <SiteHeader />
+        <Hero openCount={openCount} next={(slots ?? []).find((s) => s.available && Date.parse(s.start) > Date.now()) ?? null} />
+        <NextOpenMarquee items={nextOpen} />
         <main>
           <SlotsSection
             slots={slots}
@@ -144,6 +165,7 @@ export function BookingApp() {
             onProvider={chooseProvider}
             loading={loading}
             error={error}
+            live={live}
             onRetry={() => {
               setLoading(true);
               refresh();
@@ -163,7 +185,7 @@ export function BookingApp() {
             announce={setAnnouncement}
           />
         </main>
-        <footer className="border-t border-line bg-surface px-4 py-8 text-center text-sm text-muted">Built for the Koya assessment</footer>
+        <SiteFooter />
 
         {selected && (
           <BookingPanel

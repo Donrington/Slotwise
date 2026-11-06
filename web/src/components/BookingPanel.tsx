@@ -1,11 +1,12 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBooking } from "@/lib/api";
-import { fullWhen } from "@/lib/format";
+import { dayLabel, timeParts, timeRange } from "@/lib/format";
+import { loadAnime, prefersReducedMotion } from "@/lib/motion";
 import { isEmail } from "@/lib/validate";
 import type { Booking, SlotWithAvailability } from "@/lib/types";
 import { ConfirmationCard } from "./ConfirmationCard";
-import { Button, Notice } from "./ui";
+import { Arrow, Button, Label, Notice } from "./ui";
 
 interface Props {
   slot: SlotWithAvailability;
@@ -24,6 +25,7 @@ const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select,t
 
 export function BookingPanel({ slot, confirmed, lastEmail, onEmail, onBooked, onBookingChange, onClose, onRefresh, announce, returnFocus }: Props) {
   const dialog = useRef<HTMLDivElement>(null);
+  const backdrop = useRef<HTMLDivElement>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState(lastEmail);
   const [touched, setTouched] = useState({ name: false, email: false });
@@ -36,12 +38,26 @@ export function BookingPanel({ slot, confirmed, lastEmail, onEmail, onBooked, on
 
   const close = useCallback(() => {
     onClose();
-    requestAnimationFrame(() => {
-      // The trigger card may have become a non-focusable Booked card; fall back to the section heading.
-      const target = returnFocus?.isConnected ? returnFocus : document.getElementById("slots-title");
-      target?.focus();
-    });
+    const heading = () => document.getElementById("slots-title");
+    requestAnimationFrame(() => (returnFocus?.isConnected ? returnFocus : heading())?.focus());
+    // A refresh in flight can still turn the trigger row into a non-focusable Taken row after we
+    // focus it, which drops focus to <body>. If that happens, move focus to the timetable heading.
+    for (const ms of [150, 600, 1500]) {
+      setTimeout(() => {
+        if (document.activeElement === document.body || !document.activeElement?.isConnected) heading()?.focus();
+      }, ms);
+    }
   }, [onClose, returnFocus]);
+
+  // Drawer slides in from the right (bottom sheet on small screens).
+  useEffect(() => {
+    if (prefersReducedMotion() || !dialog.current) return;
+    const wide = window.matchMedia("(min-width: 768px)").matches;
+    loadAnime().then(({ animate }) => {
+      if (dialog.current) animate(dialog.current, wide ? { translateX: ["100%", "0%"], duration: 600, ease: "outExpo" } : { translateY: ["100%", "0%"], duration: 600, ease: "outExpo" });
+      if (backdrop.current) animate(backdrop.current, { opacity: [0, 1], duration: 400, ease: "outQuad" });
+    });
+  }, []);
 
   // Focus trap, Escape to close, focus return.
   useEffect(() => {
@@ -114,10 +130,10 @@ export function BookingPanel({ slot, confirmed, lastEmail, onEmail, onBooked, on
     let msg: string;
     if (r.status === 400) msg = r.error;
     else if (r.status === 404) {
-      msg = "That slot no longer exists. The schedule has been refreshed.";
+      msg = "That slot no longer exists. The timetable has been refreshed.";
       onRefresh();
     } else if (r.status === 409) {
-      msg = "Someone just took this slot. Pick another time from the schedule.";
+      msg = "Someone just took this slot. Pick another time from the timetable.";
       onRefresh();
     } else if (r.status === 429) {
       const wait = r.retryAfter ?? 30;
@@ -129,9 +145,13 @@ export function BookingPanel({ slot, confirmed, lastEmail, onEmail, onBooked, on
     announce(msg);
   }
 
+  const t = timeParts(slot.start);
+  const field =
+    "mt-2 block w-full border-0 border-b border-on-ink-line bg-transparent px-0 pb-3 pt-1 font-display text-2xl font-medium tracking-tight text-on-ink placeholder:text-on-ink-muted/60 focus:border-b-2 focus:border-signal focus:outline-none focus:ring-0 focus-visible:outline-none aria-[invalid=true]:border-danger-on-ink";
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-stretch md:justify-end" role="presentation">
-      <div className="absolute inset-0 bg-ink/50" onClick={close} aria-hidden="true" />
+      <div ref={backdrop} className="absolute inset-0 bg-ink/55 backdrop-blur-[2px]" onClick={close} aria-hidden="true" />
       <div
         ref={dialog}
         role="dialog"
@@ -139,88 +159,109 @@ export function BookingPanel({ slot, confirmed, lastEmail, onEmail, onBooked, on
         aria-labelledby="panel-title"
         tabIndex={-1}
         data-lenis-prevent
-        className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-surface p-6 shadow-2xl md:max-h-none md:w-[28rem] md:rounded-none md:p-8"
+        className="relative max-h-[94vh] w-full overflow-y-auto rounded-t-[32px] bg-ink px-6 pb-10 pt-6 text-on-ink shadow-2xl md:max-h-none md:w-[min(600px,100%)] md:rounded-none md:px-10 md:pt-8"
       >
-        <button type="button" onClick={close} aria-label="Close" className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full text-2xl text-muted hover:bg-brand-50">
-          ×
-        </button>
+        <div className="flex items-center justify-between border-b border-on-ink-line pb-4">
+          <Label className="text-on-ink-muted">{confirmed ? "N°03 Confirmation" : "N°03 Reserve"}</Label>
+          <button type="button" onClick={close} aria-label="Close" className="flex h-11 items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-on-ink hover:text-signal">
+            Close <span aria-hidden="true" className="text-lg leading-none">×</span>
+          </button>
+        </div>
 
-        {confirmed ? (
-          <ConfirmationCard
-            booking={confirmed}
-            slot={slot}
-            fresh
-            announce={announce}
-            onChange={(b) => {
-              onBookingChange(b);
-              onRefresh();
-            }}
-            onBookAnother={close}
-          />
-        ) : (
-          <form onSubmit={submit} noValidate>
-            <h2 id="panel-title" className="font-display text-2xl text-ink">
-              Book this slot
-            </h2>
-            <div className="mt-4 rounded-2xl bg-brand-50 p-4">
-              <p className="font-semibold text-ink">{slot.provider}</p>
-              <p className="text-muted">{fullWhen(slot.start, slot.end)}</p>
-            </div>
+        <div className="pt-8">
+          {confirmed ? (
+            <ConfirmationCard
+              booking={confirmed}
+              slot={slot}
+              fresh
+              inverse
+              announce={announce}
+              onChange={(b) => {
+                onBookingChange(b);
+                onRefresh();
+              }}
+              onBookAnother={close}
+            />
+          ) : (
+            <form onSubmit={submit} noValidate>
+              <h2 id="panel-title" className="font-display text-4xl font-medium leading-none tracking-[-0.035em] sm:text-5xl">
+                Book this <em className="font-serif font-normal">slot</em>
+              </h2>
 
-            <div className="mt-5">
-              <label htmlFor="name" className="block text-sm font-semibold text-ink">
-                Full name
-              </label>
-              <input
-                id="name"
-                autoComplete="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={() => setTouched((t) => ({ ...t, name: true }))}
-                aria-invalid={!!nameErr}
-                aria-describedby={nameErr ? "name-err" : undefined}
-                className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-base"
-              />
-              {nameErr && (
-                <p id="name-err" className="mt-1 text-sm text-danger">
-                  {nameErr}
-                </p>
-              )}
-            </div>
-
-            <div className="mt-4">
-              <label htmlFor="email" className="block text-sm font-semibold text-ink">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-                aria-invalid={!!emailErr}
-                aria-describedby={emailErr ? "email-err" : undefined}
-                className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-base"
-              />
-              {emailErr && (
-                <p id="email-err" className="mt-1 text-sm text-danger">
-                  {emailErr}
-                </p>
-              )}
-            </div>
-
-            {formError && (
-              <div className="mt-4" role="alert">
-                <Notice>{formError}</Notice>
+              <div className="mt-8 flex items-end justify-between gap-4 border-y border-on-ink-line py-6">
+                <div>
+                  <p className="flex items-baseline gap-2">
+                    <span className="font-mono text-6xl leading-none tracking-[-0.05em] tabular">{t.hm}</span>
+                    {t.period && <span className="font-mono text-sm uppercase text-on-ink-muted">{t.period}</span>}
+                  </p>
+                  <p className="mt-3 text-on-ink-muted">
+                    {dayLabel(slot.start)}, {timeRange(slot.start, slot.end)}
+                  </p>
+                </div>
+                <p className="text-right font-display text-xl font-medium tracking-tight">{slot.provider}</p>
               </div>
-            )}
 
-            <Button type="submit" className="mt-6 w-full" disabled={pending || secondsLeft > 0} aria-busy={pending}>
-              {pending ? "Booking…" : secondsLeft > 0 ? `Try again in ${secondsLeft}s` : "Confirm booking"}
-            </Button>
-          </form>
-        )}
+              <div className="mt-8">
+                <label htmlFor="name" className="block">
+                  <Label className="text-on-ink-muted">Full name</Label>
+                </label>
+                <input
+                  id="name"
+                  autoComplete="name"
+                  placeholder="Ada Okafor"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onBlur={() => setTouched((x) => ({ ...x, name: true }))}
+                  aria-invalid={!!nameErr}
+                  aria-describedby={nameErr ? "name-err" : undefined}
+                  className={field}
+                />
+                {nameErr && (
+                  <p id="name-err" className="mt-2 text-sm text-danger-on-ink">
+                    {nameErr}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-7">
+                <label htmlFor="email" className="block">
+                  <Label className="text-on-ink-muted">Email</Label>
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => setTouched((x) => ({ ...x, email: true }))}
+                  aria-invalid={!!emailErr}
+                  aria-describedby={emailErr ? "email-err" : undefined}
+                  className={field}
+                />
+                {emailErr && (
+                  <p id="email-err" className="mt-2 text-sm text-danger-on-ink">
+                    {emailErr}
+                  </p>
+                )}
+              </div>
+
+              {formError && (
+                <div className="mt-6" role="alert">
+                  <Notice inverse>{formError}</Notice>
+                </div>
+              )}
+
+              <Button type="submit" className="mt-10 h-16 w-full justify-between rounded-full px-8 text-lg" disabled={pending || secondsLeft > 0} aria-busy={pending}>
+                <span>{pending ? "Booking…" : secondsLeft > 0 ? `Try again in ${secondsLeft}s` : "Confirm booking"}</span>
+                <Arrow />
+              </Button>
+              <p className="mt-4 text-center font-mono text-[11px] uppercase tracking-[0.16em] text-on-ink-muted">
+                Safe to retry: a repeated submit never books twice
+              </p>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );

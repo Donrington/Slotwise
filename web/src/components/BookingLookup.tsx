@@ -3,7 +3,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getBooking, listSlots } from "@/lib/api";
 import type { Booking, SlotWithAvailability } from "@/lib/types";
+import { SiteHeader } from "./Chrome";
 import { ConfirmationCard } from "./ConfirmationCard";
+import { Arrow, Label } from "./ui";
 
 export function BookingLookup({ id }: { id: string }) {
   const [state, setState] = useState<"loading" | "missing" | "error" | "ok">("loading");
@@ -28,39 +30,56 @@ export function BookingLookup({ id }: { id: string }) {
   }, [id]);
 
   return (
-    <main className="mx-auto min-h-screen max-w-xl px-4 py-16 sm:px-6">
-      <Link href="/" className="text-sm font-semibold text-brand-700 underline underline-offset-4">
-        ← Back to Slotwise
-      </Link>
-      <div className="mt-8">
-        {state === "loading" && <p className="text-muted" role="status">Loading your booking…</p>}
-        {state === "missing" && (
-          <div role="alert">
-            <h1 className="font-display text-3xl text-ink">Booking not found</h1>
-            <p className="mt-2 text-muted">We could not find a booking with that id. Check the link and try again.</p>
+    <div className="min-h-screen bg-paper-2">
+      <SiteHeader />
+      <main className="mx-auto max-w-2xl px-4 py-14 sm:px-8 sm:py-20">
+        <Label className="text-muted">Booking</Label>
+        <div className="mt-6">
+          {state === "loading" && (
+            <p className="font-display text-3xl tracking-tight" role="status">
+              Finding your booking…
+            </p>
+          )}
+          {state === "missing" && (
+            <div role="alert">
+              <h1 className="font-display text-5xl font-medium leading-none tracking-[-0.04em]">
+                Booking not <em className="font-serif font-normal">found</em>
+              </h1>
+              <p className="mt-4 text-lg text-muted">There is no booking with that id. Check the link and try again.</p>
+            </div>
+          )}
+          {state === "error" && (
+            <div role="alert">
+              <h1 className="font-display text-5xl font-medium leading-none tracking-[-0.04em]">Service unavailable</h1>
+              <p className="mt-4 text-lg text-muted">We could not load this booking right now. Please try again in a moment.</p>
+            </div>
+          )}
+          {state === "ok" && booking && (
+            <ConfirmationCard
+              booking={booking}
+              slot={slot}
+              onChange={setBooking}
+              announce={setMsg}
+              onBookAnother={
+                <Link
+                  href="/#slots"
+                  className="inline-flex h-14 items-center justify-center gap-3 rounded-full bg-signal px-7 font-display text-base font-medium text-ink transition-colors duration-300 hover:bg-ink hover:text-on-ink"
+                >
+                  Book another slot <Arrow />
+                </Link>
+              }
+            />
+          )}
+          <div aria-live="polite" role="status" className="sr-only">
+            {msg}
           </div>
-        )}
-        {state === "error" && (
-          <div role="alert">
-            <h1 className="font-display text-3xl text-ink">Service unavailable</h1>
-            <p className="mt-2 text-muted">We could not load this booking right now. Please try again in a moment.</p>
-          </div>
-        )}
-        {state === "ok" && booking && (
-          <ConfirmationCard
-            booking={booking}
-            slot={slot}
-            onChange={setBooking}
-            announce={setMsg}
-            onBookAnother={
-              <Link href="/#slots" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">
-                Book another slot
-              </Link>
-            }
-          />
-        )}
-        <div aria-live="polite" role="status" className="sr-only">{msg}</div>
-      </div>
-    </main>
+        </div>
+        <p className="mt-16">
+          <Link href="/" className="font-display text-[15px] font-medium underline decoration-1 underline-offset-[6px]">
+            Back to the timetable
+          </Link>
+        </p>
+      </main>
+    </div>
   );
 }
