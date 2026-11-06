@@ -42,4 +42,6 @@ Node 20, TypeScript, Fastify, pg, zod, vitest. Web: Next.js 15 (App Router), Typ
 - GET /bookings returns confirmed and cancelled bookings, oldest first (by seq).
 - start and end are returned exactly as sent to /reset (start_raw, end_raw).
 - /healthz is the only route without an API key.
+- Pagination cursors are base64url("<seq>.<hmac>"), HMAC over email and seq with a secret derived from API_KEY. An edited cursor or one from another email's listing is 400.
+- Idempotent responses are stored as json (not jsonb) so a replay is byte-for-byte the original text.
 - The limiter is in memory because the API runs as one Render instance; keep it behind the RateLimiter interface.

@@ -64,7 +64,7 @@ async function api(method, path, { body, key = KEY, headers = {}, raw } = {}) {
   if (res.status >= 400 && !(json && typeof json.error === "string")) {
     badErrorBodies.push(`${method} ${path.split("?")[0]} -> ${res.status} without {"error": string}`);
   }
-  return { status: res.status, json, headers: res.headers, ms };
+  return { status: res.status, json, text, headers: res.headers, ms };
 }
 
 async function check(name, fn) {
@@ -328,6 +328,7 @@ async function level4() {
     expectStatus(a, 201);
     eq(b.status, 201, "replay status");
     eq(b.json.id, a.json.id, "booking id");
+    if (b.text !== a.text) throw new Error(`replay body is not byte-identical:\n          first:  ${a.text}\n          replay: ${b.text}`);
     const list = await api("GET", `/bookings?email=${encodeURIComponent(em)}`);
     eq(list.json.bookings.length, 1, "bookings for email");
   });
@@ -409,6 +410,13 @@ async function level4() {
   await check("missing or empty email is 400", async () => {
     expectStatus(await api("GET", "/bookings"), 400);
     expectStatus(await api("GET", "/bookings?email="), 400);
+  });
+  await check("a cursor from another email's listing is 400", async () => {
+    const other = email("pag2");
+    for (let i = 0; i < 2; i++) expectStatus(await book(`s${i + 11}`, other), 201);
+    const p = await api("GET", `/bookings?email=${encodeURIComponent(other)}&limit=1`);
+    if (!p.json.next_cursor) throw new Error("expected a next_cursor");
+    expectStatus(await api("GET", `/bookings?email=${encodeURIComponent(pagEmail)}&cursor=${encodeURIComponent(p.json.next_cursor)}`), 400);
   });
   await check("a bad cursor is 400", async () => {
     for (const c of ["garbage", "!!!", "MTIz", "AAAA"]) expectStatus(await api("GET", `/bookings?email=${encodeURIComponent(pagEmail)}&cursor=${c}`), 400, `cursor=${c}`);
