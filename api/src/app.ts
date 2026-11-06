@@ -4,8 +4,8 @@ import { getPool } from "./db.js";
 import { assertApiKey, keysMatch } from "./lib/auth.js";
 import { systemClock, type Clock } from "./lib/clock.js";
 import { HttpError } from "./lib/errors.js";
-import { parseBookingBody } from "./lib/validate.js";
-import { cancelBooking, createBooking, getBooking } from "./services/bookings.js";
+import { parseLimit } from "./lib/cursor.js";
+import { cancelBooking, createBookingIdempotent, findReplay, getBooking, listBookings } from "./services/bookings.js";
 import { assertValidSlots, listSlots, resetSlots, type SlotInput } from "./services/slots.js";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -80,9 +80,22 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.post("/bookings", async (req, reply) => {
-    const input = parseBookingBody(req.body);
-    const booking = await createBooking(pool, input, clock);
-    return reply.code(201).send(booking);
+    const rawKey = req.headers["idempotency-key"];
+    const key = typeof rawKey === "string" && rawKey !== "" ? rawKey : undefined;
+    if (key !== undefined && key.length > 255) throw new HttpError(400, "Idempotency-Key must be at most 255 characters");
+
+    // Order of checks: key (hook), idempotent replay, [rate limit], then validation and insert.
+    if (key) {
+      const replay = await findReplay(pool, key, req.body);
+      if (replay) return reply.code(replay.status).send(replay.body);
+    }
+    const result = await createBookingIdempotent(pool, req.body, key, clock);
+    return reply.code(result.status).send(result.body);
+  });
+
+  app.get("/bookings", async (req) => {
+    const q = req.query as Record<string, unknown>;
+    return listBookings(pool, q.email, parseLimit(q.limit), isStr(q.cursor) ? q.cursor : undefined);
   });
 
   app.get("/bookings/:id", async (req) => getBooking(pool, (req.params as { id: string }).id));

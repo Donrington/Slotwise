@@ -13,6 +13,7 @@ export async function resetSlots(pool: pg.Pool, slots: SlotInput[]): Promise<num
   try {
     await client.query("BEGIN");
     await client.query("DELETE FROM bookings");
+    await client.query("TRUNCATE idempotency_keys");
     await client.query("DELETE FROM slots");
     for (const s of slots) {
       await client.query(
