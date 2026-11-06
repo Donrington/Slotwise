@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { listSlots } from "@/lib/api";
+import { startLiveSlots } from "@/lib/live";
 import { loadGsap, prefersReducedMotion } from "@/lib/motion";
 import type { Booking, SlotWithAvailability } from "@/lib/types";
 import { BookingPanel } from "./BookingPanel";
@@ -23,10 +24,26 @@ export function BookingApp() {
   const [announcement, setAnnouncement] = useState("");
 
   const providerRef = useRef<string | null>(null);
+  const liveRows = useRef<SlotWithAvailability[] | null>(null); // set while the Realtime subscription is live
   const reqId = useRef(0);
   const index = useRef(new Map<string, SlotWithAvailability>());
 
+  // Apply a full slot list (from REST or from a live update) to state.
+  const apply = useCallback((list: SlotWithAvailability[]) => {
+    for (const s of list) index.current.set(s.id, s);
+    setProviders((cur) => [...new Set([...cur, ...list.map((s) => s.provider)])].sort());
+    // Keep the same array when nothing changed so memoised groups and animations stay quiet.
+    setSlots((cur) => (cur && JSON.stringify(cur) === JSON.stringify(list) ? cur : list));
+    setSelected((cur) => (cur ? (list.find((s) => s.id === cur.id) ?? cur) : cur));
+  }, []);
+
   const refresh = useCallback(async () => {
+    if (liveRows.current) {
+      // Live: rows are already current; just re-filter for the chosen provider.
+      const p = providerRef.current;
+      apply(p ? liveRows.current.filter((s) => s.provider === p) : liveRows.current);
+      return;
+    }
     const id = ++reqId.current;
     const p = providerRef.current;
     const r = await listSlots(p ?? undefined);
@@ -37,17 +54,39 @@ export function BookingApp() {
       return;
     }
     setError(null);
-    const list = r.data.slots;
-    for (const s of list) index.current.set(s.id, s);
-    setProviders((cur) => [...new Set([...cur, ...list.map((s) => s.provider)])].sort());
-    // Keep the same array when nothing changed so memoised groups and animations stay quiet.
-    setSlots((cur) => (cur && JSON.stringify(cur) === JSON.stringify(list) ? cur : list));
-    setSelected((cur) => (cur ? (list.find((s) => s.id === cur.id) ?? cur) : cur));
-  }, []);
+    apply(r.data.slots);
+  }, [apply]);
+
+  // Live availability via Neon Realtime when the API offers it; otherwise (or if it drops) poll.
+  useEffect(() => {
+    let handle: { stop(): void } | null = null;
+    let dead = false;
+    startLiveSlots(
+      (rows) => {
+        liveRows.current = rows;
+        setLoading(false);
+        setError(null);
+        const p = providerRef.current;
+        apply(p ? rows.filter((s) => s.provider === p) : rows);
+      },
+      () => {
+        liveRows.current = null; // fall back to polling
+        refresh();
+      },
+    ).then((h) => {
+      if (dead) h?.stop();
+      else handle = h;
+    });
+    return () => {
+      dead = true;
+      handle?.stop();
+      liveRows.current = null;
+    };
+  }, [apply, refresh]);
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 20_000);
+    const t = setInterval(() => !liveRows.current && refresh(), 20_000);
     const onFocus = () => document.visibilityState === "visible" && refresh();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);

@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 const UUID = "[0-9a-fA-F-]{1,64}";
 const ALLOWED: [string, RegExp][] = [
   ["GET", /^\/slots$/],
+  ["POST", /^\/slots\/live$/], // seals a live availability query (Neon Realtime)
   ["GET", /^\/bookings$/],
   ["POST", /^\/bookings$/],
   ["GET", new RegExp(`^/bookings/${UUID}$`)],

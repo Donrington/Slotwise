@@ -8,6 +8,7 @@ import { SlidingWindowLimiter, type RateLimiter } from "./lib/rateLimiter.js";
 import { createHash } from "node:crypto";
 import { cursorCodec, parseLimit } from "./lib/cursor.js";
 import { cancelBooking, createBookingIdempotent, findReplay, getBooking, listBookings, type Reply } from "./services/bookings.js";
+import type { LiveSlots } from "./services/live.js";
 import { assertValidSlots, listSlots, resetSlots, type SlotInput } from "./services/slots.js";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -19,6 +20,8 @@ export interface AppOptions {
   apiKey: string;
   clock?: Clock;
   limiter?: RateLimiter;
+  /** Neon Realtime sealing for live slot availability; omitted means GET /slots polling only. */
+  live?: LiveSlots;
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -95,6 +98,12 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.get("/slots", async (req) => {
     const q = req.query as Record<string, unknown>;
     return { slots: await listSlots(pool, isStr(q.provider) ? q.provider : undefined) };
+  });
+
+  // Seals a short-lived live query over slot availability for the page to subscribe to.
+  app.post("/slots/live", async (_req, reply) => {
+    if (!opts.live) return reply.code(503).send({ error: "realtime not configured" });
+    return { url: opts.live.url, sealed: await opts.live.seal() };
   });
 
   app.post("/bookings", async (req, reply) => {
