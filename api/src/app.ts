@@ -25,8 +25,8 @@ export interface AppOptions {
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
+  const apiKey = assertApiKey(opts.apiKey); // fail fast on the key before touching the database
   const pool = opts.pool ?? getPool();
-  const apiKey = assertApiKey(opts.apiKey);
   const clock = opts.clock ?? systemClock;
   const ownLimiter = opts.limiter ? undefined : new SlidingWindowLimiter(clock);
   ownLimiter?.startGc();

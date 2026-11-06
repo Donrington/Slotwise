@@ -10,7 +10,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "vitest run --passWithNoTests",
+    "test": "tsc && vitest run --passWithNoTests",
+    "test:coverage": "tsc && vitest run --coverage --coverage.include=src/** --coverage.reporter=text",
     "migrate": "tsx src/migrate-cli.ts"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^5.1.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0"
