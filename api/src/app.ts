@@ -67,7 +67,15 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
   app.setNotFoundHandler((_req, reply) => reply.code(404).send({ error: "not found" }));
 
-  app.get("/healthz", async () => ({ ok: true }));
+  // Public (no key) so Render's health check and an uptime pinger work. A cheap SELECT 1 also keeps Neon awake.
+  app.get("/healthz", async (_req, reply) => {
+    try {
+      await pool.query("SELECT 1");
+      return { ok: true };
+    } catch {
+      return reply.code(503).send({ error: "db unavailable" });
+    }
+  });
 
   app.post("/reset", async (req) => {
     const body = req.body;

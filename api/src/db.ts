@@ -8,18 +8,48 @@ export const migrationsDir = path.resolve(here, "../migrations");
 
 let pool: pg.Pool | undefined;
 
+const isLocal = (host: string) => ["localhost", "127.0.0.1", "[::1]", ""].includes(host);
+
+/**
+ * Hosted databases (Neon) require TLS with a verified certificate. Local development databases
+ * usually have no TLS, so SSL is skipped for localhost unless the URL asks for it with sslmode=require.
+ */
+export function poolConfig(raw: string): pg.PoolConfig {
+  const u = new URL(raw);
+  const mode = u.searchParams.get("sslmode");
+  u.searchParams.delete("sslmode"); // ssl is set explicitly below so the URL cannot weaken it
+  const useSsl = mode ? mode !== "disable" : !isLocal(u.hostname);
+  return {
+    connectionString: u.toString(),
+    ssl: useSsl ? { rejectUnauthorized: true } : undefined,
+    max: 10,
+    connectionTimeoutMillis: 10_000, // Neon may be waking from autosuspend
+    statement_timeout: 10_000, // a stuck query must not wedge the API
+    idleTimeoutMillis: 30_000,
+  };
+}
+
 export function getPool(): pg.Pool {
   if (!pool) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL is not set");
-    pool = new pg.Pool({
-      connectionString: url,
-      max: 10,
-      statement_timeout: 10_000, // a stuck query must not wedge the API
-      idleTimeoutMillis: 30_000,
-    });
+    pool = new pg.Pool(poolConfig(url));
   }
   return pool;
+}
+
+/** Retries with backoff so a database that is still waking up does not crash the boot. */
+export async function migrateWithRetry(attempts = 5): Promise<string[]> {
+  for (let i = 1; ; i++) {
+    try {
+      return await migrate();
+    } catch (e) {
+      if (i >= attempts) throw e;
+      const wait = 500 * 2 ** (i - 1);
+      console.error(`migration attempt ${i}/${attempts} failed (${e instanceof Error ? e.message : "error"}); retrying in ${wait} ms`);
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
 }
 
 export async function closePool(): Promise<void> {

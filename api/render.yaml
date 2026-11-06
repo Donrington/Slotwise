@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: slotwise-api
+    runtime: node
+    rootDir: api
+    plan: free
+    # One instance only: the per-email rate limiter lives in memory.
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false
+      - key: API_KEY
+        sync: false
