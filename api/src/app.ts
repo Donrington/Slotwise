@@ -4,6 +4,7 @@ import { getPool } from "./db.js";
 import { assertApiKey, keysMatch } from "./lib/auth.js";
 import { systemClock, type Clock } from "./lib/clock.js";
 import { HttpError } from "./lib/errors.js";
+import { SlidingWindowLimiter, type RateLimiter } from "./lib/rateLimiter.js";
 import { parseLimit } from "./lib/cursor.js";
 import { cancelBooking, createBookingIdempotent, findReplay, getBooking, listBookings } from "./services/bookings.js";
 import { assertValidSlots, listSlots, resetSlots, type SlotInput } from "./services/slots.js";
@@ -16,12 +17,20 @@ export interface AppOptions {
   pool?: pg.Pool;
   apiKey: string;
   clock?: Clock;
+  limiter?: RateLimiter;
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
   const pool = opts.pool ?? getPool();
   const apiKey = assertApiKey(opts.apiKey);
   const clock = opts.clock ?? systemClock;
+  const limiter: RateLimiter =
+    opts.limiter ??
+    (() => {
+      const l = new SlidingWindowLimiter(clock);
+      l.startGc();
+      return l;
+    })();
   const app = Fastify({ logger: false });
 
   // CORS: the page lives on another origin. Preflight is answered before auth.
@@ -71,6 +80,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const slots = body.slots as SlotInput[];
     assertValidSlots(slots);
     const count = await resetSlots(pool, slots);
+    limiter.clear();
     return { ok: true, slots: count };
   });
 
@@ -88,6 +98,17 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     if (key) {
       const replay = await findReplay(pool, key, req.body);
       if (replay) return reply.code(replay.status).send(replay.body);
+    }
+    // Rate limit by normalised email. Every attempt that carries an email counts, failures included.
+    const email = (req.body as any)?.email;
+    if (typeof email === "string" && email.trim() !== "") {
+      const r = limiter.consume(email.trim().toLowerCase());
+      if (!r.allowed) {
+        return reply
+          .code(429)
+          .header("Retry-After", String(r.retryAfterSeconds))
+          .send({ error: "too many attempts, retry later" }); // never stored as an idempotent response
+      }
     }
     const result = await createBookingIdempotent(pool, req.body, key, clock);
     return reply.code(result.status).send(result.body);

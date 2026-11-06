@@ -2,6 +2,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { migrate } from "../src/db.js";
+import { SlidingWindowLimiter } from "../src/lib/rateLimiter.js";
 
 const url = process.env.TEST_DATABASE_URL;
 const KEY = "test-key-0123456789abcdef";
@@ -15,7 +16,7 @@ describe.skipIf(!url)("level 2", () => {
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: url });
     await migrate(pool);
-    app = buildApp({ pool, apiKey: KEY, clock: { now: () => fixed } });
+    app = buildApp({ pool, apiKey: KEY, clock: { now: () => fixed }, limiter: new SlidingWindowLimiter(undefined, 1000) });
     await app.inject({
       method: "POST",
       url: "/reset",

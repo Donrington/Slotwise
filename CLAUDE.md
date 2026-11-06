@@ -29,3 +29,17 @@ GET /bookings?email=&limit=&cursor=: that person's bookings, oldest first, email
 
 ## Stack
 Node 20, TypeScript, Fastify, pg, zod, vitest. Web: Next.js 15 (App Router), TypeScript, Tailwind CSS, GSAP, Lenis, anime.js. DB: Neon Postgres. API host: Render. Web host: Vercel.
+
+## Order of checks on POST /bookings
+1. API key (401).
+2. Idempotent replay: Idempotency-Key present and a stored row with the same body hash returns the stored response. A replay is not counted as an attempt.
+3. Rate limit by normalised email (429, Retry-After). Every attempt carrying an email counts, failures included. A 429 is never counted twice and never stored.
+4. Idempotency lock (same key, different body is 422), then validation (400), slot lookup (404), started check (400), insert (409 on the partial unique index).
+
+## Decisions where the spec is silent
+- POST /reset clears idempotency keys and the in-memory limiter, so the checker can reset between tests.
+- Idempotency stores every final response except 429 and 5xx.
+- GET /bookings returns confirmed and cancelled bookings, oldest first (by seq).
+- start and end are returned exactly as sent to /reset (start_raw, end_raw).
+- /healthz is the only route without an API key.
+- The limiter is in memory because the API runs as one Render instance; keep it behind the RateLimiter interface.

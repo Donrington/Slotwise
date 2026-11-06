@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { migrate } from "../src/db.js";
 import { encodeCursor } from "../src/lib/cursor.js";
+import { SlidingWindowLimiter } from "../src/lib/rateLimiter.js";
 import { requestHash } from "../src/lib/hash.js";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -34,7 +35,8 @@ describe.skipIf(!url)("level 4", () => {
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: url, max: 20 });
     await migrate(pool);
-    app = buildApp({ pool, apiKey: KEY });
+    // pagination needs 25 bookings for one email, so lift the rate limit here (level 5 has its own tests)
+    app = buildApp({ pool, apiKey: KEY, limiter: new SlidingWindowLimiter(undefined, 1000) });
   });
   afterAll(async () => {
     await app.close();
