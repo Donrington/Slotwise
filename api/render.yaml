@@ -11,7 +11,13 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
-      - key: DATABASE_URL
+      - key: DATABASE_URL # pooled (-pooler) Neon URL for app traffic
+        sync: false
+      - key: DATABASE_URL_UNPOOLED # direct Neon URL, used only for migrations at boot
         sync: false
       - key: API_KEY
+        sync: false
+      - key: NEON_REALTIME_URL # optional: enables live slot availability on the page
+        sync: false
+      - key: NEON_REALTIME_SECRET
         sync: false
