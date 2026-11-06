@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { systemClock, type Clock } from "../lib/clock.js";
-import { decodeCursor, encodeCursor } from "../lib/cursor.js";
+import type { CursorCodec } from "../lib/cursor.js";
 import { HttpError } from "../lib/errors.js";
 import { requestHash } from "../lib/hash.js";
 import { parseBookingBody } from "../lib/validate.js";
@@ -154,15 +154,21 @@ export async function cancelBooking(pool: pg.Pool, id: string) {
   throw new HttpError(409, "booking already cancelled");
 }
 
-export async function listBookings(pool: pg.Pool, emailRaw: unknown, limit: number, cursor: string | undefined) {
+export async function listBookings(
+  pool: pg.Pool,
+  codec: CursorCodec,
+  emailRaw: unknown,
+  limit: number,
+  cursor: string | undefined,
+) {
   if (typeof emailRaw !== "string" || emailRaw.trim() === "") throw new HttpError(400, "email is required");
   const email = emailRaw.trim().toLowerCase();
-  const after = cursor === undefined ? "0" : decodeCursor(cursor);
+  const after = cursor === undefined ? "0" : codec.decode(email, cursor);
   const { rows } = await pool.query(
     `SELECT seq, ${COLS} FROM bookings WHERE email = $1 AND seq > $2 ORDER BY seq ASC LIMIT $3`,
     [email, after, limit + 1],
   );
   const page = rows.slice(0, limit);
-  const next = rows.length > limit ? encodeCursor(page[page.length - 1].seq) : null;
+  const next = rows.length > limit ? codec.encode(email, page[page.length - 1].seq) : null;
   return { bookings: page.map(toBooking), next_cursor: next };
 }

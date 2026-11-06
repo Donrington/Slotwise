@@ -5,7 +5,8 @@ import { assertApiKey, keysMatch } from "./lib/auth.js";
 import { systemClock, type Clock } from "./lib/clock.js";
 import { HttpError } from "./lib/errors.js";
 import { SlidingWindowLimiter, type RateLimiter } from "./lib/rateLimiter.js";
-import { parseLimit } from "./lib/cursor.js";
+import { createHash } from "node:crypto";
+import { cursorCodec, parseLimit } from "./lib/cursor.js";
 import { cancelBooking, createBookingIdempotent, findReplay, getBooking, listBookings, type Reply } from "./services/bookings.js";
 import { assertValidSlots, listSlots, resetSlots, type SlotInput } from "./services/slots.js";
 
@@ -24,14 +25,13 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const pool = opts.pool ?? getPool();
   const apiKey = assertApiKey(opts.apiKey);
   const clock = opts.clock ?? systemClock;
-  const limiter: RateLimiter =
-    opts.limiter ??
-    (() => {
-      const l = new SlidingWindowLimiter(clock);
-      l.startGc();
-      return l;
-    })();
+  const ownLimiter = opts.limiter ? undefined : new SlidingWindowLimiter(clock);
+  ownLimiter?.startGc();
+  const limiter: RateLimiter = opts.limiter ?? ownLimiter!;
+  // Cursor signing secret, derived from the API key so there is no extra env var to manage.
+  const cursors = cursorCodec(createHash("sha256").update(`slotwise-cursor:${apiKey}`).digest("hex"));
   const app = Fastify({ logger: false });
+  app.addHook("onClose", async () => ownLimiter?.stopGc());
 
   // CORS: the page lives on another origin. Preflight is answered before auth.
   app.addHook("onRequest", async (req, reply) => {
@@ -125,7 +125,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
 
   app.get("/bookings", async (req) => {
     const q = req.query as Record<string, unknown>;
-    return listBookings(pool, q.email, parseLimit(q.limit), isStr(q.cursor) ? q.cursor : undefined);
+    return listBookings(pool, cursors, q.email, parseLimit(q.limit), isStr(q.cursor) ? q.cursor : undefined);
   });
 
   app.get("/bookings/:id", async (req) => getBooking(pool, (req.params as { id: string }).id));

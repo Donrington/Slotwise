@@ -2,7 +2,6 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import { migrate } from "../src/db.js";
-import { encodeCursor } from "../src/lib/cursor.js";
 import { SlidingWindowLimiter } from "../src/lib/rateLimiter.js";
 import { requestHash } from "../src/lib/hash.js";
 
@@ -155,7 +154,7 @@ describe.skipIf(!url)("level 4", () => {
     it("email is required; bad or tampered cursor is 400", async () => {
       expect((await list("limit=5")).statusCode).toBe(400);
       expect((await list("email=")).statusCode).toBe(400);
-      for (const c of ["!!!", "abc", encodeCursor(0), Buffer.from("seq:-3").toString("base64url"), Buffer.from("hello").toString("base64url")]) {
+      for (const c of ["!!!", "abc", Buffer.from("0.xxxxxxxxxxxxxxxxxxxxxx").toString("base64url"), Buffer.from("seq:3").toString("base64url"), Buffer.from("hello").toString("base64url")]) {
         expect((await list(`email=a@x.com&cursor=${c}`)).statusCode, c).toBe(400);
       }
     });
