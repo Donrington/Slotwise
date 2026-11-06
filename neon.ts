@@ -3,9 +3,8 @@ import { defineConfig } from "@neon/config/v1";
 export default defineConfig({
   // Declare your Neon services here
   preview: {
-    // Live slot availability on the booking page. Browsers may connect only from these origins;
-    // add the Vercel URL (https://<project>.vercel.app) once the page is deployed.
-    realtime: { allowedOrigins: ["http://localhost:3000", "http://localhost:3222"] },
+    // Live slot availability on the booking page. Browsers may connect only from these origins.
+    realtime: { allowedOrigins: ["https://slotwise-one-delta.vercel.app", "http://localhost:3000", "http://localhost:3222"] },
   },
   auth: false,
   // Branch policy: per-branch tuning
