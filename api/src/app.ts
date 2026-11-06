@@ -6,7 +6,7 @@ import { systemClock, type Clock } from "./lib/clock.js";
 import { HttpError } from "./lib/errors.js";
 import { SlidingWindowLimiter, type RateLimiter } from "./lib/rateLimiter.js";
 import { parseLimit } from "./lib/cursor.js";
-import { cancelBooking, createBookingIdempotent, findReplay, getBooking, listBookings } from "./services/bookings.js";
+import { cancelBooking, createBookingIdempotent, findReplay, getBooking, listBookings, type Reply } from "./services/bookings.js";
 import { assertValidSlots, listSlots, resetSlots, type SlotInput } from "./services/slots.js";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -99,18 +99,19 @@ export function buildApp(opts: AppOptions): FastifyInstance {
       const replay = await findReplay(pool, key, req.body);
       if (replay) return reply.code(replay.status).send(replay.body);
     }
-    // Rate limit by normalised email. Every attempt that carries an email counts, failures included.
+    // Rate limit by normalised email, applied inside createBookingIdempotent once the request is known
+    // not to be a replay. Every real attempt that carries an email counts, failures included.
     const email = (req.body as any)?.email;
-    if (typeof email === "string" && email.trim() !== "") {
-      const r = limiter.consume(email.trim().toLowerCase());
-      if (!r.allowed) {
-        return reply
-          .code(429)
-          .header("Retry-After", String(r.retryAfterSeconds))
-          .send({ error: "too many attempts, retry later" }); // never stored as an idempotent response
-      }
-    }
-    const result = await createBookingIdempotent(pool, req.body, key, clock);
+    const limitKey = typeof email === "string" && email.trim() !== "" ? email.trim().toLowerCase() : undefined;
+    const gate = (): Reply | undefined => {
+      if (!limitKey) return undefined; // no usable email: it will 400 anyway, and no key is invented from the IP
+      const r = limiter.consume(limitKey);
+      return r.allowed
+        ? undefined
+        : { status: 429, body: { error: "too many attempts, retry later" }, headers: { "Retry-After": String(r.retryAfterSeconds) } };
+    };
+    const result = await createBookingIdempotent(pool, req.body, key, clock, gate);
+    if (result.headers) reply.headers(result.headers);
     return reply.code(result.status).send(result.body);
   });
 

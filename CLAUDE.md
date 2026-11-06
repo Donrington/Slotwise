@@ -32,9 +32,9 @@ Node 20, TypeScript, Fastify, pg, zod, vitest. Web: Next.js 15 (App Router), Typ
 
 ## Order of checks on POST /bookings
 1. API key (401).
-2. Idempotent replay: Idempotency-Key present and a stored row with the same body hash returns the stored response. A replay is not counted as an attempt.
-3. Rate limit by normalised email (429, Retry-After). Every attempt carrying an email counts, failures included. A 429 is never counted twice and never stored.
-4. Idempotency lock (same key, different body is 422), then validation (400), slot lookup (404), started check (400), insert (409 on the partial unique index).
+2. Idempotent replay: Idempotency-Key present and a stored row with the same body hash returns the stored response. A replay is not counted as an attempt. This is checked once before the lock and again under the per-key advisory lock, so ten simultaneous requests with one key count as ONE attempt and all return the same booking.
+3. Rate limit by normalised email (429, Retry-After), taken under the idempotency lock once the request is known not to be a replay. Every real attempt carrying an email counts, failures included (a same-key different-body request, which ends in 422, counts too). A 429 is never stored.
+4. Then, in the same transaction: different body under an existing key is 422, validation (400), slot lookup (404), started check (400), insert (409 on the partial unique index).
 
 ## Decisions where the spec is silent
 - POST /reset clears idempotency keys and the in-memory limiter, so the checker can reset between tests.

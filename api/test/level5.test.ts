@@ -79,6 +79,25 @@ describe.skipIf(!url)("level 5", () => {
     expect(stored.rowCount).toBe(0);
   });
 
+  it("10 simultaneous requests with one idempotency key consume one attempt and all succeed", async () => {
+    const body = { slot_id: "s1", name: "A", email: "twin@x.com" };
+    const res = await Promise.all(Array.from({ length: 10 }, () => book(body, { "idempotency-key": "twins" })));
+    expect(res.map((r) => r.statusCode)).toEqual(Array(10).fill(201));
+    expect(new Set(res.map((r) => r.json().id)).size).toBe(1);
+    // only one attempt was counted, so four more fresh attempts still pass and the sixth overall is blocked
+    for (let i = 0; i < 4; i++) expect((await book({ slot_id: `s${i + 2}`, name: "A", email: "twin@x.com" })).statusCode).toBe(201);
+    expect((await book({ slot_id: "s9", name: "A", email: "twin@x.com" })).statusCode).toBe(429);
+  });
+
+  it("a different body under an existing key is 422 and does count as an attempt", async () => {
+    await book({ slot_id: "s1", name: "A", email: "d@x.com" }, { "idempotency-key": "dk" });
+    for (let i = 0; i < 4; i++) {
+      const r = await book({ slot_id: "s2", name: "A", email: "d@x.com" }, { "idempotency-key": "dk" });
+      expect(r.statusCode).toBe(422);
+    }
+    expect((await book({ slot_id: "s2", name: "A", email: "d@x.com" }, { "idempotency-key": "dk" })).statusCode).toBe(429);
+  });
+
   it("bodies without a usable email are not rate limited", async () => {
     for (let i = 0; i < 8; i++) expect((await book({ slot_id: "s1", name: "A" })).statusCode).toBe(400);
   });

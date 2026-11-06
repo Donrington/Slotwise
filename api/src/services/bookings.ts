@@ -12,7 +12,11 @@ type Queryable = Pick<pg.Pool, "query">;
 export interface Reply {
   status: number;
   body: unknown;
+  headers?: Record<string, string>;
 }
+
+/** Runs once per real attempt (never for a replay). Returns a reply (e.g. 429) to stop, or undefined to go on. */
+export type Gate = () => Reply | undefined;
 
 function toBooking(r: any) {
   return {
@@ -85,8 +89,9 @@ export async function createBookingIdempotent(
   rawBody: unknown,
   key: string | undefined,
   clock: Clock = systemClock,
+  gate: Gate = () => undefined,
 ): Promise<Reply> {
-  if (!key) return attemptBooking(pool, rawBody, clock, false);
+  if (!key) return gate() ?? (await attemptBooking(pool, rawBody, clock, false));
 
   const hash = requestHash(rawBody);
   const client = await pool.connect();
@@ -98,13 +103,22 @@ export async function createBookingIdempotent(
       "SELECT request_hash, status_code, response_body FROM idempotency_keys WHERE key = $1",
       [key],
     );
-    if (found.rows.length > 0) {
+    const row = found.rows[0];
+    if (row && row.request_hash === hash) {
+      // A replay (including a concurrent twin that waited on the lock) is a retry, not a new attempt: not counted.
       await client.query("COMMIT");
-      const row = found.rows[0];
-      if (row.request_hash !== hash) {
-        return { status: 422, body: { error: "idempotency key reused with a different request" } };
-      }
       return { status: row.status_code, body: row.response_body };
+    }
+    // From here it is a real attempt, so it is rate limited. Doing this after the lock means ten
+    // simultaneous requests with one key consume ONE attempt. A 429 is never stored.
+    const blocked = gate();
+    if (blocked) {
+      await client.query("COMMIT");
+      return blocked;
+    }
+    if (row) {
+      await client.query("COMMIT");
+      return { status: 422, body: { error: "idempotency key reused with a different request" } };
     }
     const reply = await attemptBooking(client, rawBody, clock, true);
     await client.query(
