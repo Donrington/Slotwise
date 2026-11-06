@@ -12,7 +12,12 @@ export function getPool(): pg.Pool {
   if (!pool) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL is not set");
-    pool = new pg.Pool({ connectionString: url, max: 10 });
+    pool = new pg.Pool({
+      connectionString: url,
+      max: 10,
+      statement_timeout: 10_000, // a stuck query must not wedge the API
+      idleTimeoutMillis: 30_000,
+    });
   }
   return pool;
 }

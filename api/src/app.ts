@@ -5,7 +5,7 @@ import { assertApiKey, keysMatch } from "./lib/auth.js";
 import { systemClock, type Clock } from "./lib/clock.js";
 import { HttpError } from "./lib/errors.js";
 import { parseBookingBody } from "./lib/validate.js";
-import { createBooking, getBooking } from "./services/bookings.js";
+import { cancelBooking, createBooking, getBooking } from "./services/bookings.js";
 import { assertValidSlots, listSlots, resetSlots, type SlotInput } from "./services/slots.js";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -86,6 +86,8 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.get("/bookings/:id", async (req) => getBooking(pool, (req.params as { id: string }).id));
+
+  app.delete("/bookings/:id", async (req) => cancelBooking(pool, (req.params as { id: string }).id));
 
   return app;
 }
