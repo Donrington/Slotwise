@@ -28,7 +28,7 @@ GET /bookings?email=&limit=&cursor=: that person's bookings, oldest first, email
 - After each change run: npm run build && npm test in /api. Commit small, with conventional messages.
 
 ## Stack
-Node 20, TypeScript, Fastify, pg, zod, vitest. Web: Next.js 15 (App Router), TypeScript, Tailwind CSS, GSAP, Lenis, anime.js. DB: Neon Postgres. API host: Render. Web host: Vercel.
+Node 20, TypeScript, Fastify, pg, zod, vitest. Web: Next.js 15 (App Router), TypeScript, Tailwind CSS, GSAP, Lenis, anime.js. DB: Neon Postgres. API host: Vercel (Fastify, src/index.ts entry; render.yaml kept as a single-instance alternative). Web host: Vercel.
 
 ## Order of checks on POST /bookings
 1. API key (401).
@@ -44,4 +44,5 @@ Node 20, TypeScript, Fastify, pg, zod, vitest. Web: Next.js 15 (App Router), Typ
 - /healthz is the only route without an API key.
 - Pagination cursors are base64url("<seq>.<hmac>"), HMAC over email and seq with a secret derived from API_KEY. An edited cursor or one from another email's listing is 400.
 - Idempotent responses are stored as json (not jsonb) so a replay is byte-for-byte the original text.
-- The limiter is in memory because the API runs as one Render instance; keep it behind the RateLimiter interface.
+- The rate limiter lives in Postgres (rate_limit_attempts, per-email advisory lock, database clock) because Vercel runs the API as many instances; an in-memory count would allow 5 per instance. SlidingWindowLimiter (in memory) remains for unit tests only. Both sit behind the RateLimiter interface.
+- On Vercel, migrations run at build time (npm run vercel-build, direct DATABASE_URL_UNPOOLED); the server skips them at runtime when VERCEL is set.

@@ -12,10 +12,12 @@
     "start": "node dist/server.js",
     "test": "tsc && vitest run --passWithNoTests",
     "test:coverage": "tsc && vitest run --coverage --coverage.include=src/** --coverage.reporter=text",
-    "migrate": "tsx src/migrate-cli.ts"
+    "migrate": "tsc && node dist/migrate-cli.js",
+    "vercel-build": "tsc && node dist/migrate-cli.js"
   },
   "dependencies": {
     "@neon/realtime": "^0.2.0",
+    "@vercel/functions": "^3.11.0",
     "fastify": "^5.12.8",
     "pg": "^8.23.1",
     "zod": "^4.6.7"

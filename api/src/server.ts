@@ -7,7 +7,9 @@ const apiKey = assertApiKey(process.env.API_KEY);
 const port = Number(process.env.PORT ?? 3000);
 
 async function main() {
-  await migrateWithRetry();
+  // On Vercel the function bundle may not include migrations/, so they run at build time instead
+  // (npm run vercel-build). Everywhere else the server migrates itself before listening.
+  if (!process.env.VERCEL) await migrateWithRetry();
   const live = liveSlotsFromEnv();
   console.log(live ? "realtime: live slot queries enabled" : "realtime: not configured, page will poll");
   const app = buildApp({ apiKey, live });

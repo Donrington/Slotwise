@@ -15,8 +15,11 @@ export interface Reply {
   headers?: Record<string, string>;
 }
 
-/** Runs once per real attempt (never for a replay). Returns a reply (e.g. 429) to stop, or undefined to go on. */
-export type Gate = () => Reply | undefined;
+/**
+ * Runs once per real attempt (never for a replay). Returns a reply (e.g. 429) to stop, or undefined
+ * to go on. `db` is the open transaction when there is one, so the attempt commits with the request.
+ */
+export type Gate = (db?: Queryable) => Promise<Reply | undefined>;
 
 function toBooking(r: any) {
   return {
@@ -89,9 +92,9 @@ export async function createBookingIdempotent(
   rawBody: unknown,
   key: string | undefined,
   clock: Clock = systemClock,
-  gate: Gate = () => undefined,
+  gate: Gate = async () => undefined,
 ): Promise<Reply> {
-  if (!key) return gate() ?? (await attemptBooking(pool, rawBody, clock, false));
+  if (!key) return (await gate()) ?? (await attemptBooking(pool, rawBody, clock, false));
 
   const hash = requestHash(rawBody);
   const client = await pool.connect();
@@ -111,7 +114,7 @@ export async function createBookingIdempotent(
     }
     // From here it is a real attempt, so it is rate limited. Doing this after the lock means ten
     // simultaneous requests with one key consume ONE attempt. A 429 is never stored.
-    const blocked = gate();
+    const blocked = await gate(client);
     if (blocked) {
       await client.query("COMMIT");
       return blocked;

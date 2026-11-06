@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { attachDatabasePool } from "@vercel/functions";
 import pg from "pg";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,8 @@ export function getPool(): pg.Pool {
     // An idle connection can drop when Neon scales to zero; without a listener that error event
     // would crash the process. The pool discards the broken client and opens a new one when needed.
     pool.on("error", (e) => console.error(`idle database connection lost: ${e.message}`));
+    // On Vercel Fluid compute, release idle connections before an instance is suspended.
+    if (process.env.VERCEL) attachDatabasePool(pool);
   }
   return pool;
 }

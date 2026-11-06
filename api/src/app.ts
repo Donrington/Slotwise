@@ -4,7 +4,7 @@ import { getPool } from "./db.js";
 import { assertApiKey, keysMatch } from "./lib/auth.js";
 import { systemClock, type Clock } from "./lib/clock.js";
 import { HttpError } from "./lib/errors.js";
-import { SlidingWindowLimiter, type RateLimiter } from "./lib/rateLimiter.js";
+import { PgRateLimiter, type RateLimiter } from "./lib/rateLimiter.js";
 import { createHash } from "node:crypto";
 import { cursorCodec, parseLimit } from "./lib/cursor.js";
 import { cancelBooking, createBookingIdempotent, findReplay, getBooking, listBookings, type Reply } from "./services/bookings.js";
@@ -28,13 +28,11 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const apiKey = assertApiKey(opts.apiKey); // fail fast on the key before touching the database
   const pool = opts.pool ?? getPool();
   const clock = opts.clock ?? systemClock;
-  const ownLimiter = opts.limiter ? undefined : new SlidingWindowLimiter(clock);
-  ownLimiter?.startGc();
-  const limiter: RateLimiter = opts.limiter ?? ownLimiter!;
+  // Postgres-backed by default: exact across instances. Tests may inject the in-memory one.
+  const limiter: RateLimiter = opts.limiter ?? new PgRateLimiter(pool);
   // Cursor signing secret, derived from the API key so there is no extra env var to manage.
   const cursors = cursorCodec(createHash("sha256").update(`slotwise-cursor:${apiKey}`).digest("hex"));
   const app = Fastify({ logger: false });
-  app.addHook("onClose", async () => ownLimiter?.stopGc());
 
   // CORS: the page lives on another origin. Preflight is answered before auth.
   app.addHook("onRequest", async (req, reply) => {
@@ -91,7 +89,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     const slots = body.slots as SlotInput[];
     assertValidSlots(slots);
     const count = await resetSlots(pool, slots);
-    limiter.clear();
+    await limiter.clear();
     return { ok: true, slots: count };
   });
 
@@ -120,9 +118,9 @@ export function buildApp(opts: AppOptions): FastifyInstance {
     // not to be a replay. Every real attempt that carries an email counts, failures included.
     const email = (req.body as any)?.email;
     const limitKey = typeof email === "string" && email.trim() !== "" ? email.trim().toLowerCase() : undefined;
-    const gate = (): Reply | undefined => {
+    const gate = async (db?: Parameters<RateLimiter["consume"]>[1]): Promise<Reply | undefined> => {
       if (!limitKey) return undefined; // no usable email: it will 400 anyway, and no key is invented from the IP
-      const r = limiter.consume(limitKey);
+      const r = await limiter.consume(limitKey, db);
       return r.allowed
         ? undefined
         : { status: 429, body: { error: "too many attempts, retry later" }, headers: { "Retry-After": String(r.retryAfterSeconds) } };
