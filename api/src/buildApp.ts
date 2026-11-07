@@ -22,6 +22,8 @@ export interface AppOptions {
   limiter?: RateLimiter;
   /** Neon Realtime sealing for live slot availability; omitted means GET /slots polling only. */
   live?: LiveSlots;
+  /** A Fastify instance to configure; the entrypoint passes one, tests let buildApp create it. */
+  instance?: FastifyInstance;
 }
 
 export function buildApp(opts: AppOptions): FastifyInstance {
@@ -32,7 +34,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   const limiter: RateLimiter = opts.limiter ?? new PgRateLimiter(pool);
   // Cursor signing secret, derived from the API key so there is no extra env var to manage.
   const cursors = cursorCodec(createHash("sha256").update(`slotwise-cursor:${apiKey}`).digest("hex"));
-  const app = Fastify({ logger: false });
+  const app = opts.instance ?? Fastify({ logger: false });
 
   // CORS: the page lives on another origin. Preflight is answered before auth.
   app.addHook("onRequest", async (req, reply) => {

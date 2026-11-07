@@ -220,7 +220,7 @@ describe("migrations", () => {
 });
 
 // Boots the compiled server as a real process. Requires `npm run build` first (the npm test script does it).
-const dist = path.resolve(here, "../dist/server.js");
+const dist = path.resolve(here, "../dist/index.js");
 describe.skipIf(!url)("server process", () => {
   const run = (env: Record<string, string>, port: number) =>
     spawn(process.execPath, [dist], { env: { PATH: process.env.PATH ?? "", PORT: String(port), ...env }, stdio: ["ignore", "pipe", "pipe"] });
