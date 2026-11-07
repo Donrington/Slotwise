@@ -22,7 +22,7 @@ anime.js (web); Neon Postgres with Neon Realtime; both apps on Vercel.
 You need Node 20 or newer and a Postgres database (a local one, or a Neon branch).
 
 ```bash
-git clone https://github.com/Donrington/Slotwise && cd Slotwise
+git clone https://github.com/Donrington/Slotwise && cd Slotwise    # the default branch is main
 ```
 
 **API** (variables in `api/.env.example`):
