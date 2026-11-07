@@ -1,6 +1,6 @@
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/buildApp.js";
 import { migrate } from "../src/db.js";
 
 const url = process.env.TEST_DATABASE_URL;

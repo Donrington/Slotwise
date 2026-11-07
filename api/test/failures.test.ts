@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/buildApp.js";
 import { migrate, migrateWithRetry } from "../src/db.js";
 import { SlidingWindowLimiter } from "../src/lib/rateLimiter.js";
 

@@ -1,4 +1,4 @@
-import { buildApp } from "./app.js";
+import { buildApp } from "./buildApp.js";
 import { closePool, migrateWithRetry } from "./db.js";
 import { liveSlotsFromEnv } from "./services/live.js";
 import { assertApiKey } from "./lib/auth.js";

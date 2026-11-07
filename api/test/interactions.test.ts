@@ -1,7 +1,7 @@
 // Cases where Levels 3, 4 and 5 meet: concurrency, idempotency and rate limiting together.
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/buildApp.js";
 import { migrate } from "../src/db.js";
 import { SlidingWindowLimiter } from "../src/lib/rateLimiter.js";
 

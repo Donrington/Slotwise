@@ -1,7 +1,7 @@
 // The production limiter: a sliding window in Postgres, exact across instances.
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/buildApp.js";
 import { migrate } from "../src/db.js";
 import { PgRateLimiter } from "../src/lib/rateLimiter.js";
 

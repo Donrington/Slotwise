@@ -1,6 +1,6 @@
 import pg from "pg";
 import { describe, expect, it } from "vitest";
-import { buildApp } from "../src/app.js";
+import { buildApp } from "../src/buildApp.js";
 import { databaseName, liveSlotsFromEnv } from "../src/services/live.js";
 
 const KEY = "test-key-0123456789abcdef";
