@@ -5,3 +5,6 @@ dist
 .env.local
 .env*.local
 .neon
+
+# Personal notes (submission, Loom script)
+*.local.md

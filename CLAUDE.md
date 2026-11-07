@@ -37,7 +37,7 @@ Node 20, TypeScript, Fastify, pg, zod, vitest. Web: Next.js 15 (App Router), Typ
 4. Then, in the same transaction: different body under an existing key is 422, validation (400), slot lookup (404), started check (400), insert (409 on the partial unique index).
 
 ## Decisions where the spec is silent
-- POST /reset clears idempotency keys and the in-memory limiter, so the checker can reset between tests.
+- POST /reset clears idempotency keys and rate-limit counters, so the checker can reset between tests.
 - Idempotency stores every final response except 429 and 5xx.
 - GET /bookings returns confirmed and cancelled bookings, oldest first (by seq).
 - start and end are returned exactly as sent to /reset (start_raw, end_raw).
