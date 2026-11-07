@@ -8,3 +8,6 @@ dist
 
 # Personal notes (submission, Loom script)
 *.local.md
+
+# Walkthrough video and voiceover (large binaries, not for git)
+media/
