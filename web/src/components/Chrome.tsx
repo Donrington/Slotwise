@@ -88,8 +88,12 @@ export function SiteFooter() {
             <p>Built for the Koya assessment</p>
           </div>
           <div className="space-y-2 md:col-span-3 md:text-right">
-            <Label className="text-on-ink-muted">Back to</Label>
+            <Label className="text-on-ink-muted">More</Label>
             <p>
+              <a href="/admin" className="underline decoration-1 underline-offset-[6px] hover:text-signal">
+                Clinic staff
+              </a>
+              {" · "}
               <a href="#hero-title" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" }); }} className="underline decoration-1 underline-offset-[6px] hover:text-signal">
                 the top
               </a>
