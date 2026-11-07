@@ -8,8 +8,9 @@ import { PgRateLimiter, type RateLimiter } from "./lib/rateLimiter.js";
 import { createHash } from "node:crypto";
 import { cursorCodec, parseLimit } from "./lib/cursor.js";
 import { cancelBooking, createBookingIdempotent, findReplay, getBooking, listBookings, type Reply } from "./services/bookings.js";
+import { addSlots, adminBookings, adminSlots, deleteSlot, overview } from "./services/admin.js";
 import type { LiveSlots } from "./services/live.js";
-import { assertValidSlots, listSlots, resetSlots, type SlotInput } from "./services/slots.js";
+import { listSlots, parseSlotsBody, resetSlots } from "./services/slots.js";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -81,16 +82,7 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   });
 
   app.post("/reset", async (req) => {
-    const body = req.body;
-    if (!isObj(body) || !Array.isArray(body.slots)) throw new HttpError(400, "slots must be an array");
-    for (const s of body.slots) {
-      if (!isObj(s) || !isStr(s.id) || !isStr(s.provider) || !isStr(s.start) || !isStr(s.end)) {
-        throw new HttpError(400, "invalid slot");
-      }
-    }
-    const slots = body.slots as SlotInput[];
-    assertValidSlots(slots);
-    const count = await resetSlots(pool, slots);
+    const count = await resetSlots(pool, parseSlotsBody(req.body));
     await limiter.clear();
     return { ok: true, slots: count };
   });
@@ -135,6 +127,16 @@ export function buildApp(opts: AppOptions): FastifyInstance {
   app.get("/bookings", async (req) => {
     const q = req.query as Record<string, unknown>;
     return listBookings(pool, cursors, q.email, parseLimit(q.limit), isStr(q.cursor) ? q.cursor : undefined);
+  });
+
+  // ---- clinic staff (additive to the contract; the web app gates these behind a staff login) ----
+  app.get("/admin/overview", async () => overview(pool));
+  app.get("/admin/slots", async () => adminSlots(pool));
+  app.post("/admin/slots", async (_req, reply) => reply.code(201).send(await addSlots(pool, parseSlotsBody(_req.body))));
+  app.delete("/admin/slots/:id", async (req) => deleteSlot(pool, (req.params as { id: string }).id));
+  app.get("/admin/bookings", async (req) => {
+    const q = req.query as Record<string, unknown>;
+    return adminBookings(pool, cursors, q.status, parseLimit(q.limit), isStr(q.cursor) ? q.cursor : undefined);
   });
 
   app.get("/bookings/:id", async (req) => getBooking(pool, (req.params as { id: string }).id));

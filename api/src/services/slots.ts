@@ -44,6 +44,22 @@ export async function listSlots(pool: pg.Pool, provider?: string) {
   return rows;
 }
 
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isStr = (v: unknown): v is string => typeof v === "string";
+
+/** Validates a {slots:[...]} body, shared by POST /reset and POST /admin/slots. */
+export function parseSlotsBody(body: unknown): SlotInput[] {
+  if (!isObj(body) || !Array.isArray(body.slots)) throw new HttpError(400, "slots must be an array");
+  for (const s of body.slots) {
+    if (!isObj(s) || !isStr(s.id) || !isStr(s.provider) || !isStr(s.start) || !isStr(s.end)) {
+      throw new HttpError(400, "invalid slot");
+    }
+  }
+  const slots = body.slots as SlotInput[];
+  assertValidSlots(slots);
+  return slots;
+}
+
 export function assertValidSlots(input: SlotInput[]) {
   const seen = new Set<string>();
   for (const s of input) {
